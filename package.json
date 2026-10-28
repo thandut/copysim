@@ -1,0 +1,9 @@
+{
+  "name": "frsim-heading-control",
+  "version": "1.0.8",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

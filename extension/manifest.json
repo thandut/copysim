@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "FRS Right-Stick Heading Control",
+  "version": "1.0.8",
+  "description": "Local-only absolute heading control for FRS REBUILT.",
+  "content_scripts": [
+    {
+      "matches": ["https://rebuilt.frsim.com/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}
