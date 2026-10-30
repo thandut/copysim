@@ -22,13 +22,22 @@
   // This function is deliberately self-contained. Its source is also installed
   // inside REBUILT's simulation Worker, where the robot controllers actually run.
   function installTurbopackPatch(scope, patchStatus) {
-    const inputMarker =
-      "turn:o,intake:l,score:u,outtake:c,climb:f,block:d,stow:h,fieldRelative:el";
-    const inputReplacement =
-      "turn:o,headingX:(globalThis.__copySimHeadingPatch.selectedGamepad=!!S,S?(globalThis.__copySimHeadingPatch.inputFrames++,globalThis.__copySimHeadingPatch.axisX=S.axes[2]??0,globalThis.__copySimHeadingPatch.axisY=S.axes[3]??0,globalThis.__copySimHeadingPatch.axisX):void 0),headingY:S?globalThis.__copySimHeadingPatch.axisY:void 0,intake:l,score:u,outtake:c,climb:f,block:d,stow:h,fieldRelative:el";
+    const inputVariants = [
+      {
+        marker:
+          "turn:o,intake:l,score:u,outtake:c,climb:f,block:d,stow:h,fieldRelative:el",
+        replacement:
+          "turn:o,headingX:(globalThis.__copySimHeadingPatch.selectedGamepad=!!S,S?(globalThis.__copySimHeadingPatch.inputFrames++,globalThis.__copySimHeadingPatch.axisX=S.axes[2]??0,globalThis.__copySimHeadingPatch.axisY=S.axes[3]??0,globalThis.__copySimHeadingPatch.axisX):void 0),headingY:S?globalThis.__copySimHeadingPatch.axisY:void 0,intake:l,score:u,outtake:c,climb:f,block:d,stow:h,fieldRelative:el",
+      },
+      {
+        marker:
+          "turn:o,intake:c,score:h,outtake:E,climb:U,block:P,stow:D,fieldRelative:T",
+        replacement:
+          "turn:o,headingX:(globalThis.__copySimHeadingPatch.selectedGamepad=!!Y,Y?(globalThis.__copySimHeadingPatch.inputFrames++,globalThis.__copySimHeadingPatch.axisX=Y.axes[2]??0,globalThis.__copySimHeadingPatch.axisY=Y.axes[3]??0,globalThis.__copySimHeadingPatch.axisX):void 0),headingY:Y?globalThis.__copySimHeadingPatch.axisY:void 0,intake:c,score:h,outtake:E,climb:U,block:P,stow:D,fieldRelative:T",
+      },
+    ];
 
-    const enginePrefix =
-      't=>{"use strict";var e=t.i(2960),i=t.i(1721),s=t.i(2849);';
+    const engineStart = 't=>{"use strict";';
     const headingHelpers = String.raw`
 function __copySimWrap(t){let e=2*Math.PI;return t-=Math.trunc((t+Math.PI)/e)*e,t-=Math.trunc((t-Math.PI)/e)*e,t}
 function __copySimReport(i,r,s,a){let n=globalThis.__copySimWorkerDebug;if(!n)return;n.frames++,n.headingX=s,n.headingY=a,n.yaw=i,n.magnitude=r,n.engaged=r>.9;let o=performance.now();o-n.last>250&&(n.last=o,postMessage({t:"__copySimHeadingDebug",debug:{frames:n.frames,headingX:n.headingX,headingY:n.headingY,yaw:n.yaw,magnitude:n.magnitude,engaged:n.engaged}}))}
@@ -37,20 +46,40 @@ function __copySimHeadingOmega(t,e,i,s,a){let r=__copySimHeadingTarget(t,e,i);if
 function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAxes;return n?.active||null!=e.headingX&&null!=e.headingY?__copySimHeadingOmega(t,e,i,s,a):(__copySimReport(i,0,null,null),r)}
 `;
 
-    const genericMarker =
-      "S=(0,n.deadzone)(s.turn)*c.turnRate*n.DRIVER_TURN_SHARE";
-    const genericReplacement =
-      "S=__copySimHeadingOrTurn(this,s,d.heading,i.t,c.turnRate*n.DRIVER_TURN_SHARE,(0,n.deadzone)(s.turn)*c.turnRate*n.DRIVER_TURN_SHARE)";
+    const genericVariants = [
+      {
+        marker:
+          "S=(0,n.deadzone)(s.turn)*c.turnRate*n.DRIVER_TURN_SHARE",
+        replacement:
+          "S=__copySimHeadingOrTurn(this,s,d.heading,i.t,c.turnRate*n.DRIVER_TURN_SHARE,(0,n.deadzone)(s.turn)*c.turnRate*n.DRIVER_TURN_SHARE)",
+      },
+      {
+        marker:
+          "I=(0,h.deadzone)(r.turn)*p.turnRate*h.DRIVER_TURN_SHARE",
+        replacement:
+          "I=__copySimHeadingOrTurn(this,r,u.heading,i.t,p.turnRate*h.DRIVER_TURN_SHARE,(0,h.deadzone)(r.turn)*p.turnRate*h.DRIVER_TURN_SHARE)",
+      },
+    ];
 
-    const reblitzMarker =
-      'a&&"teleop"===this.mode&&this.drive.sticks(t.y,-t.x,t.turn);let r=this.drive.periodic(this.pose,s,this.mode);';
-    const reblitzReplacement =
-      'a&&"teleop"===this.mode&&(this.drive.sticks(t.y,-t.x,globalThis.__copySimHeadingAxes?.active||null!=t.headingX?0:t.turn),(globalThis.__copySimHeadingAxes?.active||null!=t.headingX)&&(()=>{let e=__copySimHeadingTarget(this,t,this.pose.heading);null===e?this.drive.setWanted("TELEOP"):this.drive.setTargetRotationWithLimitedTranslation(e,i.TELEOP.velocityCoefficient)})());let r=this.drive.periodic(this.pose,s,this.mode);';
+    const reblitzVariants = [
+      {
+        marker:
+          'a&&"teleop"===this.mode&&this.drive.sticks(t.y,-t.x,t.turn);let r=this.drive.periodic(this.pose,s,this.mode);',
+        replacement:
+          'a&&"teleop"===this.mode&&(this.drive.sticks(t.y,-t.x,!t.score&&"DEFAULT_STATE"===this.wanted&&(globalThis.__copySimHeadingAxes?.active||null!=t.headingX)?0:t.turn),!t.score&&"DEFAULT_STATE"===this.wanted&&(globalThis.__copySimHeadingAxes?.active||null!=t.headingX)&&(()=>{let e=__copySimHeadingTarget(this,t,this.pose.heading);null===e?this.drive.setWanted("TELEOP"):this.drive.setTargetRotationWithLimitedTranslation(e,i.TELEOP.velocityCoefficient)})());let r=this.drive.periodic(this.pose,s,this.mode);',
+      },
+      {
+        marker:
+          'a&&"teleop"===this.mode&&this.drive.sticks(t.y,-t.x,t.turn);let n=this.drive.periodic(this.pose,s,this.mode);',
+        replacement:
+          'a&&"teleop"===this.mode&&(this.drive.sticks(t.y,-t.x,!t.score&&"DEFAULT_STATE"===this.wanted&&(globalThis.__copySimHeadingAxes?.active||null!=t.headingX)?0:t.turn),!t.score&&"DEFAULT_STATE"===this.wanted&&(globalThis.__copySimHeadingAxes?.active||null!=t.headingX)&&(()=>{let e=__copySimHeadingTarget(this,t,this.pose.heading);null===e?this.drive.setWanted("TELEOP"):this.drive.setTargetRotationWithLimitedTranslation(e,i.TELEOP.velocityCoefficient)})());let n=this.drive.periodic(this.pose,s,this.mode);',
+      },
+    ];
 
     const acceptMarker =
       'this.drive.acceptTeleopInput(t.y,-t.x,t.turn,"teleop"===this.mode)';
     const acceptReplacement =
-      'this.drive.acceptTeleopInput(t.y,-t.x,globalThis.__copySimHeadingAxes?.active||null!=t.headingX?0:t.turn,"teleop"===this.mode)';
+      'this.drive.acceptTeleopInput(t.y,-t.x,!t.score&&(globalThis.__copySimHeadingAxes?.active||null!=t.headingX)?0:t.turn,"teleop"===this.mode)';
 
     function replaceOnce(source, marker, replacement, label) {
       const first = source.indexOf(marker);
@@ -72,33 +101,47 @@ function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAx
       let patchedEngine = false;
 
       try {
-        if (patched.includes(inputMarker)) {
+        const inputVariant = inputVariants.find(({ marker }) =>
+          patched.includes(marker),
+        );
+        if (inputVariant) {
           patched = replaceOnce(
             patched,
-            inputMarker,
-            inputReplacement,
+            inputVariant.marker,
+            inputVariant.replacement,
             "controller input",
           );
           patchedInput = true;
         }
 
-        if (patched.startsWith(enginePrefix)) {
+        const genericVariant = genericVariants.find(({ marker }) =>
+          patched.includes(marker),
+        );
+        const reblitzVariant = reblitzVariants.find(({ marker }) =>
+          patched.includes(marker),
+        );
+        if (
+          patched.startsWith(engineStart) &&
+          genericVariant &&
+          reblitzVariant &&
+          patched.includes(acceptMarker)
+        ) {
           patched = replaceOnce(
             patched,
-            enginePrefix,
-            enginePrefix + headingHelpers,
+            engineStart,
+            engineStart + headingHelpers,
             "REBUILT engine",
           );
           patched = replaceOnce(
             patched,
-            genericMarker,
-            genericReplacement,
+            genericVariant.marker,
+            genericVariant.replacement,
             "4414/254 generic controller",
           );
           patched = replaceOnce(
             patched,
-            reblitzMarker,
-            reblitzReplacement,
+            reblitzVariant.marker,
+            reblitzVariant.replacement,
             "2910 controller",
           );
           patched = replaceOnce(
@@ -214,6 +257,8 @@ globalThis.addEventListener("message",event=>{if(event.data?.t!=="__copySimHeadi
 const __copySimWorkerOrigin=${JSON.stringify(originalURL.origin)};
 const __copySimNativeImportScripts=globalThis.importScripts.bind(globalThis);
 globalThis.importScripts=(...urls)=>__copySimNativeImportScripts(...urls.map(url=>new URL(String(url),__copySimWorkerOrigin+"/").href));
+const __copySimNativeFetch=globalThis.fetch.bind(globalThis);
+globalThis.fetch=(input,init)=>{if(typeof Request==="function"&&input instanceof Request)return __copySimNativeFetch(input,init);let resolved=input;try{resolved=new URL(String(input),__copySimWorkerOrigin+"/").href}catch{}return __copySimNativeFetch(resolved,init)};
 (${installTurbopackPatch.toString()})(globalThis,__copySimWorkerStatus);
 importScripts(${JSON.stringify(originalURL.href)});
 setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStatus.engine}),0);

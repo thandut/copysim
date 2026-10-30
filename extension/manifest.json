@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FRS Right-Stick Heading Control",
-  "version": "1.0.8",
+  "version": "1.0.10",
   "description": "Local-only absolute heading control for FRS REBUILT.",
   "content_scripts": [
     {

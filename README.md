@@ -41,8 +41,10 @@ The implementation mirrors the referenced `DriveFactory` values:
 - maximum heading lead: `170°`
 
 The generic controller path covers robots such as 4414 and 254. The separate
-Reblitz path covers 2910. Version 1.0.8 patches both the page input code and the
-simulation Web Worker where robot physics actually runs. A red banner appears
+Reblitz path covers 2910. While 2910 is scoring, its built-in hub aim takes
+priority over custom right-stick heading. Version 1.0.10 supports the Halloween
+build, including its WebAssembly game engine, and patches both the page input
+code and the simulation Web Worker where robot physics actually runs. A red banner appears
 10 seconds after the simulation Worker starts if an FRS update prevents either
 side from loading.
 
