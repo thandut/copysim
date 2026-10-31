@@ -4,6 +4,7 @@
   const status = {
     input: false,
     engine: false,
+    wasm: false,
     worker: false,
     workerEngine: false,
     inputFrames: 0,
@@ -44,6 +45,7 @@ function __copySimReport(i,r,s,a){let n=globalThis.__copySimWorkerDebug;if(!n)re
 function __copySimHeadingTarget(t,e,i){let h=globalThis.__copySimHeadingAxes,s=h?.active?h.x:e.headingX??0,a=h?.active?h.y:e.headingY??0,r=Math.hypot(s,a);if(__copySimReport(i,r,s,a),!(r>.9))return t.__copySimHeadingEngaged=!1,t.__copySimHeadingError=0,t.__copySimLastStick=void 0,t.__copySimLastYaw=void 0,null;let n=__copySimWrap(Math.atan2(-s,-a)+Math.PI+("red"===t.alliance?Math.PI:0));return t.__copySimHeadingEngaged?t.__copySimHeadingError+=__copySimWrap(n-t.__copySimLastStick)-__copySimWrap(i-t.__copySimLastYaw):(t.__copySimHeadingEngaged=!0,t.__copySimHeadingError=__copySimWrap(n-i)),Math.abs(t.__copySimHeadingError)>2*Math.PI&&(t.__copySimHeadingError-=2*Math.PI*Math.sign(t.__copySimHeadingError)),t.__copySimLastStick=n,t.__copySimLastYaw=i,__copySimWrap(i+Math.max(-170*Math.PI/180,Math.min(170*Math.PI/180,t.__copySimHeadingError)))}
 function __copySimHeadingOmega(t,e,i,s,a){let r=__copySimHeadingTarget(t,e,i);if(null===r)return t.__copySimHeadingPreviousError=void 0,t.__copySimHeadingLastTime=s,0;let n=__copySimWrap(r-i),o=Number.isFinite(t.__copySimHeadingLastTime)?s-t.__copySimHeadingLastTime:0,h=o>0&&o<.25&&Number.isFinite(t.__copySimHeadingPreviousError)?__copySimWrap(n-t.__copySimHeadingPreviousError)/o:0,l=3.5*n+.09*h;return t.__copySimHeadingPreviousError=n,t.__copySimHeadingLastTime=s,Math.max(-a,Math.min(a,l))}
 function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAxes;return n?.active||null!=e.headingX&&null!=e.headingY?__copySimHeadingOmega(t,e,i,s,a):(__copySimReport(i,0,null,null),r)}
+function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=>t.id===i);if(!a?.local)return s;let r=globalThis.__copySimHeadingAxes;if(!r?.active&&(null==e.headingX||null==e.headingY))return s;let n=a.quat;if(!n||n.length<4)return s;let o=Math.atan2(2*(n[3]*n[1]-n[0]*n[2]),1-2*(n[1]*n[1]+n[2]*n[2]));if(e.score)return t.__copySimHeadingEngaged=!1,t.__copySimHeadingPreviousError=void 0,t.__copySimHeadingLastTime=void 0,__copySimReport(o,0,null,null),s;let h=__copySimHeadingOmega(t,e,o,t.view?.elapsed??0,5.04),l=Math.max(-1,Math.min(1,h/5.04));return 0===l?0:Math.sign(l)*(.12+.88*Math.abs(l))}
 `;
 
     const genericVariants = [
@@ -81,6 +83,11 @@ function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAx
     const acceptReplacement =
       'this.drive.acceptTeleopInput(t.y,-t.x,!t.score&&(globalThis.__copySimHeadingAxes?.active||null!=t.headingX)?0:t.turn,"teleop"===this.mode)';
 
+    const wasmMarker =
+      "i[h]=s?.x??0,i[h+1]=s?.y??0,i[h+2]=s?.turn??0,i[h+3]=+!!s?.intake";
+    const wasmReplacement =
+      "i[h]=s?.x??0,i[h+1]=s?.y??0,i[h+2]=__copySimWasmTurn(this,s,this.ids[e],s?.turn??0),i[h+3]=+!!s?.intake";
+
     function replaceOnce(source, marker, replacement, label) {
       const first = source.indexOf(marker);
       if (first < 0) throw new Error(`CopySim marker not found: ${label}`);
@@ -99,6 +106,7 @@ function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAx
       let patched = source;
       let patchedInput = false;
       let patchedEngine = false;
+      let patchedWasm = false;
 
       try {
         const inputVariant = inputVariants.find(({ marker }) =>
@@ -120,18 +128,22 @@ function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAx
         const reblitzVariant = reblitzVariants.find(({ marker }) =>
           patched.includes(marker),
         );
-        if (
+        const hasController =
           patched.startsWith(engineStart) &&
           genericVariant &&
           reblitzVariant &&
-          patched.includes(acceptMarker)
-        ) {
+          patched.includes(acceptMarker);
+        const hasWasm =
+          patched.startsWith(engineStart) && patched.includes(wasmMarker);
+        if (hasController || hasWasm) {
           patched = replaceOnce(
             patched,
             engineStart,
             engineStart + headingHelpers,
             "REBUILT engine",
           );
+        }
+        if (hasController) {
           patched = replaceOnce(
             patched,
             genericVariant.marker,
@@ -152,11 +164,21 @@ function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAx
           );
           patchedEngine = true;
         }
+        if (hasWasm) {
+          patched = replaceOnce(
+            patched,
+            wasmMarker,
+            wasmReplacement,
+            "WebAssembly input bridge",
+          );
+          patchedWasm = true;
+        }
 
         if (patched === source) return factory;
         const replacement = (0, eval)(`(${patched})`);
         if (patchedInput) patchStatus.input = true;
         if (patchedEngine) patchStatus.engine = true;
+        if (patchedWasm) patchStatus.wasm = true;
         return replacement;
       } catch (error) {
         console.error(
@@ -248,12 +270,12 @@ function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAx
         }
 
         const originalURL = new URL(scriptURL, location.href);
-        const workerStatus = { input: false, engine: false };
+        const workerStatus = { input: false, engine: false, wasm: false };
         const wrapperSource = `
-const __copySimWorkerStatus={input:false,engine:false};
+const __copySimWorkerStatus={input:false,engine:false,wasm:false};
 globalThis.__copySimWorkerDebug={frames:0,last:0};
 globalThis.__copySimHeadingAxes={active:false,x:0,y:0};
-globalThis.addEventListener("message",event=>{if(event.data?.t!=="__copySimHeadingAxes")return;event.stopImmediatePropagation();let x=Number(event.data.x),y=Number(event.data.y);globalThis.__copySimHeadingAxes={active:Number.isFinite(x)&&Number.isFinite(y),x:Number.isFinite(x)?x:0,y:Number.isFinite(y)?y:0}},true);
+globalThis.addEventListener("message",event=>{if(event.data?.t!=="__copySimHeadingAxes")return;event.stopImmediatePropagation();let x=Number(event.data.x),y=Number(event.data.y),active=event.data.active!==false&&Number.isFinite(x)&&Number.isFinite(y);globalThis.__copySimHeadingAxes={active,x:Number.isFinite(x)?x:0,y:Number.isFinite(y)?y:0}},true);
 const __copySimWorkerOrigin=${JSON.stringify(originalURL.origin)};
 const __copySimNativeImportScripts=globalThis.importScripts.bind(globalThis);
 globalThis.importScripts=(...urls)=>__copySimNativeImportScripts(...urls.map(url=>new URL(String(url),__copySimWorkerOrigin+"/").href));
@@ -261,7 +283,7 @@ const __copySimNativeFetch=globalThis.fetch.bind(globalThis);
 globalThis.fetch=(input,init)=>{if(typeof Request==="function"&&input instanceof Request)return __copySimNativeFetch(input,init);let resolved=input;try{resolved=new URL(String(input),__copySimWorkerOrigin+"/").href}catch{}return __copySimNativeFetch(resolved,init)};
 (${installTurbopackPatch.toString()})(globalThis,__copySimWorkerStatus);
 importScripts(${JSON.stringify(originalURL.href)});
-setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStatus.engine}),0);
+setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStatus.engine,wasm:__copySimWorkerStatus.wasm}),0);
 `;
         const blobURL = URL.createObjectURL(
           new Blob([wrapperSource], { type: "text/javascript" }),
@@ -277,25 +299,24 @@ setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStat
         const nativePostMessage = worker.postMessage.bind(worker);
         worker.postMessage = function (message, transferOrOptions) {
           let outgoing = message;
-          if (
-            message?.t === "input" &&
-            message.input &&
-            status.selectedGamepad
-          ) {
+          if (message?.t === "input" && message.input) {
             nativePostMessage({
               t: "__copySimHeadingAxes",
-              x: status.axisX,
-              y: status.axisY,
+              active: status.selectedGamepad,
+              x: status.selectedGamepad ? status.axisX : 0,
+              y: status.selectedGamepad ? status.axisY : 0,
             });
-            outgoing = {
-              ...message,
-              input: {
-                ...message.input,
-                headingX: status.axisX,
-                headingY: status.axisY,
-              },
-            };
-            status.handoffFrames++;
+            if (status.selectedGamepad) {
+              outgoing = {
+                ...message,
+                input: {
+                  ...message.input,
+                  headingX: status.axisX,
+                  headingY: status.axisY,
+                },
+              };
+              status.handoffFrames++;
+            }
           }
           return arguments.length > 1
             ? nativePostMessage(outgoing, transferOrOptions)
@@ -306,7 +327,8 @@ setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStat
           if (event.data?.t === "__copySimHeadingPatch") {
             event.stopImmediatePropagation();
             workerStatus.engine = !!event.data.engine;
-            status.workerEngine = workerStatus.engine;
+            workerStatus.wasm = !!event.data.wasm;
+            status.workerEngine = workerStatus.wasm;
             if (status.input && status.workerEngine) {
               console.info(
                 "CopySim right-stick heading control is active in the simulation worker.",

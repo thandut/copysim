@@ -44,16 +44,27 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     })`,
     context,
   );
+  // The live deployment puts this bridge in a different Turbopack module from
+  // the JavaScript robot controllers above.
+  const wasmFactory = vm.runInContext(
+    `(t=>{"use strict";
+      class W{step(t){let e=this.e.exports,i=new Float64Array(e.memory.buffer,e.fs_input(this.p),10*this.ids.length);for(let e=0;e<this.ids.length;e++){let s=t.get(this.ids[e]),h=10*e;i[h]=s?.x??0,i[h+1]=s?.y??0,i[h+2]=s?.turn??0,i[h+3]=+!!s?.intake}}}
+      globalThis.__copySimTestWasmTurn=__copySimWasmTurn;
+    })`,
+    context,
+  );
 
   context.TURBOPACK.push([
     inputFactory,
     engineFactory,
     halloweenInputFactory,
     halloweenEngineFactory,
+    wasmFactory,
   ]);
 
   assert.equal(context.__copySimHeadingPatch.input, true);
   assert.equal(context.__copySimHeadingPatch.engine, true);
+  assert.equal(context.__copySimHeadingPatch.wasm, true);
   assert.equal(context.__copySimHeadingPatch.worker, false);
   assert.equal(context.__copySimHeadingPatch.workerEngine, false);
   assert.match(
@@ -84,6 +95,53 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     /!t\.score&&"DEFAULT_STATE"===this\.wanted/,
     "2910 must yield heading control to its built-in hub aim while scoring",
   );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[4]),
+    /i\[h\+2\]=__copySimWasmTurn\(this,s,this\.ids\[e\],s\?\.turn\?\?0\)/,
+    "the active WebAssembly engine input must receive heading-controlled turn",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[4]),
+    /Math\.atan2\(2\*\(n\[3\]\*n\[1\]-n\[0\]\*n\[2\]\)/,
+    "the WebAssembly path must derive heading from the robot quaternion",
+  );
+
+  processedChunk[4]({});
+  context.__copySimHeadingAxes = { active: true, x: -1, y: 0 };
+  const localSim = {
+    view: {
+      elapsed: 0,
+      robots: [
+        { id: 7, local: true, alliance: "blue", quat: [0, 0, 0, 1] },
+      ],
+    },
+  };
+  assert.ok(
+    context.__copySimTestWasmTurn(localSim, { turn: 0 }, 7, 0) < -0.9,
+    "private heading axes must still control a regular match after input quantization strips custom fields",
+  );
+  assert.equal(
+    context.__copySimTestWasmTurn(
+      {
+        view: {
+          elapsed: 0,
+          robots: [
+            { id: 8, local: false, alliance: "blue", quat: [0, 0, 0, 1] },
+          ],
+        },
+      },
+      { turn: 0.37 },
+      8,
+      0.37,
+    ),
+    0.37,
+    "private heading axes must not change another robot",
+  );
+  assert.equal(
+    context.__copySimTestWasmTurn(localSim, { turn: 0.42, score: true }, 7, 0.42),
+    0.42,
+    "native hub aiming must retain turn control while scoring",
+  );
 });
 
 test("the extension manifest is restricted to the real REBUILT origin", async () => {
@@ -94,7 +152,7 @@ test("the extension manifest is restricted to the real REBUILT origin", async ()
   assert.equal(manifest.content_scripts[0].world, "MAIN");
   assert.equal(manifest.content_scripts[0].run_at, "document_start");
   assert.equal(manifest.permissions, undefined);
-  assert.equal(manifest.version, "1.0.10");
+  assert.equal(manifest.version, "1.0.13");
 });
 
 test("the rebuilt simulation Worker is wrapped before it loads", async () => {
@@ -158,7 +216,7 @@ test("the rebuilt simulation Worker is wrapped before it loads", async () => {
   worker.postMessage({ t: "input", input: { x: 0.25, turn: 0 } });
   assert.deepEqual(
     { ...worker.messages[0] },
-    { t: "__copySimHeadingAxes", x: -0.99, y: 0.15 },
+    { t: "__copySimHeadingAxes", active: true, x: -0.99, y: 0.15 },
   );
   assert.deepEqual(
     { ...worker.sent.input },
