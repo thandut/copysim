@@ -44,6 +44,17 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     })`,
     context,
   );
+  const bindingsInputFactory = vm.runInContext(
+    '(e=>{function read(){return {input:{x:t,y:n,turn:o,intake:c,score:h,outtake:R,climb:P,block:U,stow:D,hood:C,fieldRelative:T},ui:{gamepadConnected:!!G}}}})',
+    context,
+  );
+  const bindingsEngineFactory = vm.runInContext(
+    `(t=>{"use strict";var e=t.i(2960),i=t.i(1721),s=t.i(2849),a=t.i(49220),n=t.i(93734),h=t.i(40932);
+      class M{update(){a&&"teleop"===this.mode&&this.drive.sticks(t.y,-t.x,t.turn);let n=this.drive.periodic(this.pose,s,this.mode);this.drive.acceptTeleopInput(t.y,-t.x,t.turn,"teleop"===this.mode)}}
+      class C{update(){let D=(0,h.deadzone)(r.turn)*p.turnRate*h.DRIVER_TURN_SHARE}}
+    })`,
+    context,
+  );
   // The live deployment puts this bridge in a different Turbopack module from
   // the JavaScript robot controllers above.
   const wasmFactory = vm.runInContext(
@@ -59,6 +70,8 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     engineFactory,
     halloweenInputFactory,
     halloweenEngineFactory,
+    bindingsInputFactory,
+    bindingsEngineFactory,
     wasmFactory,
   ]);
 
@@ -97,16 +110,31 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
   );
   assert.match(
     Function.prototype.toString.call(processedChunk[4]),
+    /selectedGamepad=!!G/,
+    "the configurable-bindings input module must be patched",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[4]),
+    /G\.axes\[2\]/,
+    "the updated input module must read the physical Xbox right stick",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[5]),
+    /D=__copySimHeadingOrTurn\(this,r,u\.heading/,
+    "the configurable-bindings generic controller must be patched",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[6]),
     /i\[h\+2\]=__copySimWasmTurn\(this,s,this\.ids\[e\],s\?\.turn\?\?0\)/,
     "the active WebAssembly engine input must receive heading-controlled turn",
   );
   assert.match(
-    Function.prototype.toString.call(processedChunk[4]),
+    Function.prototype.toString.call(processedChunk[6]),
     /Math\.atan2\(2\*\(n\[3\]\*n\[1\]-n\[0\]\*n\[2\]\)/,
     "the WebAssembly path must derive heading from the robot quaternion",
   );
 
-  processedChunk[4]({});
+  processedChunk[6]({});
   context.__copySimHeadingAxes = { active: true, x: -1, y: 0 };
   const localSim = {
     view: {
@@ -152,7 +180,7 @@ test("the extension manifest is restricted to the real REBUILT origin", async ()
   assert.equal(manifest.content_scripts[0].world, "MAIN");
   assert.equal(manifest.content_scripts[0].run_at, "document_start");
   assert.equal(manifest.permissions, undefined);
-  assert.equal(manifest.version, "1.0.13");
+  assert.equal(manifest.version, "1.0.14");
 });
 
 test("the rebuilt simulation Worker is wrapped before it loads", async () => {

@@ -36,6 +36,12 @@
         replacement:
           "turn:o,headingX:(globalThis.__copySimHeadingPatch.selectedGamepad=!!Y,Y?(globalThis.__copySimHeadingPatch.inputFrames++,globalThis.__copySimHeadingPatch.axisX=Y.axes[2]??0,globalThis.__copySimHeadingPatch.axisY=Y.axes[3]??0,globalThis.__copySimHeadingPatch.axisX):void 0),headingY:Y?globalThis.__copySimHeadingPatch.axisY:void 0,intake:c,score:h,outtake:E,climb:U,block:P,stow:D,fieldRelative:T",
       },
+      {
+        marker:
+          "turn:o,intake:c,score:h,outtake:R,climb:P,block:U,stow:D,hood:C,fieldRelative:T",
+        replacement:
+          "turn:o,headingX:(globalThis.__copySimHeadingPatch.selectedGamepad=!!G,G?(globalThis.__copySimHeadingPatch.inputFrames++,globalThis.__copySimHeadingPatch.axisX=G.axes[2]??0,globalThis.__copySimHeadingPatch.axisY=G.axes[3]??0,globalThis.__copySimHeadingPatch.axisX):void 0),headingY:G?globalThis.__copySimHeadingPatch.axisY:void 0,intake:c,score:h,outtake:R,climb:P,block:U,stow:D,hood:C,fieldRelative:T",
+      },
     ];
 
     const engineStart = 't=>{"use strict";';
@@ -60,6 +66,12 @@ function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=
           "I=(0,h.deadzone)(r.turn)*p.turnRate*h.DRIVER_TURN_SHARE",
         replacement:
           "I=__copySimHeadingOrTurn(this,r,u.heading,i.t,p.turnRate*h.DRIVER_TURN_SHARE,(0,h.deadzone)(r.turn)*p.turnRate*h.DRIVER_TURN_SHARE)",
+      },
+      {
+        marker:
+          "D=(0,h.deadzone)(r.turn)*p.turnRate*h.DRIVER_TURN_SHARE",
+        replacement:
+          "D=__copySimHeadingOrTurn(this,r,u.heading,i.t,p.turnRate*h.DRIVER_TURN_SHARE,(0,h.deadzone)(r.turn)*p.turnRate*h.DRIVER_TURN_SHARE)",
       },
     ];
 
