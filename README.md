@@ -10,11 +10,7 @@ only the controller-input and robot-heading functions in your browser.
 1. Open `chrome://extensions` in Chrome, or `edge://extensions` in Edge.
 2. Turn on **Developer mode**.
 3. Click **Load unpacked**.
-4. Select this folder:
-
-   ```text
-   C:\Users\zetha\Desktop\robotics\copysim\extension
-   ```
+4. Select the folder location of this directory.
 
 5. Open <https://rebuilt.frsim.com/> normally. Complete any genuine Vercel
    browser check if it appears.
