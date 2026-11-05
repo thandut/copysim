@@ -140,7 +140,13 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     view: {
       elapsed: 0,
       robots: [
-        { id: 7, local: true, alliance: "blue", quat: [0, 0, 0, 1] },
+        {
+          id: 7,
+          team: 4414,
+          local: true,
+          alliance: "blue",
+          quat: [0, 0, 0, 1],
+        },
       ],
     },
   };
@@ -165,10 +171,37 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     0.37,
     "private heading axes must not change another robot",
   );
+  assert.ok(
+    context.__copySimTestWasmTurn(
+      localSim,
+      { turn: 0.42, score: true },
+      7,
+      0.42,
+    ) < -0.9,
+    "4414 and other turret robots must retain heading control while scoring",
+  );
   assert.equal(
-    context.__copySimTestWasmTurn(localSim, { turn: 0.42, score: true }, 7, 0.42),
+    context.__copySimTestWasmTurn(
+      {
+        view: {
+          elapsed: 0,
+          robots: [
+            {
+              id: 9,
+              team: 2910,
+              local: true,
+              alliance: "blue",
+              quat: [0, 0, 0, 1],
+            },
+          ],
+        },
+      },
+      { turn: 0.42, score: true },
+      9,
+      0.42,
+    ),
     0.42,
-    "native hub aiming must retain turn control while scoring",
+    "2910 native hub aiming must retain turn control while scoring",
   );
 });
 
@@ -180,7 +213,7 @@ test("the extension manifest is restricted to the real REBUILT origin", async ()
   assert.equal(manifest.content_scripts[0].world, "MAIN");
   assert.equal(manifest.content_scripts[0].run_at, "document_start");
   assert.equal(manifest.permissions, undefined);
-  assert.equal(manifest.version, "1.0.14");
+  assert.equal(manifest.version, "1.0.15");
 });
 
 test("the rebuilt simulation Worker is wrapped before it loads", async () => {

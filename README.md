@@ -42,7 +42,8 @@ The implementation mirrors the referenced `DriveFactory` values:
 
 The generic controller path covers robots such as 4414 and 254. The separate
 Reblitz path covers 2910. While 2910 is scoring, its built-in hub aim takes
-priority over custom right-stick heading. Version 1.0.14 applies heading control
+priority over custom right-stick heading; turret robots such as 4414 retain
+right-stick heading while firing. Version 1.0.15 applies heading control
 at the WebAssembly input boundary used by the Halloween build, while retaining
 the JavaScript-controller fallback. It patches both the page input code and the
 simulation Web Worker where robot physics actually runs. A red banner appears
