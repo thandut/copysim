@@ -113,6 +113,31 @@ function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=
       );
     }
 
+    function structuralInputVariant(source) {
+      const padMatches = [
+        ...source.matchAll(
+          /gamepadConnected:!!([A-Za-z_$][\w$]*)/g,
+        ),
+      ];
+      const inputMatches = [
+        ...source.matchAll(
+          /turn:([A-Za-z_$][\w$]*),((?:[A-Za-z_$][\w$]*:[A-Za-z_$][\w$]*,)*fieldRelative:[A-Za-z_$][\w$]*)/g,
+        ),
+      ].filter((match) =>
+        ["intake", "score", "outtake", "climb", "block", "stow"].every(
+          (key) => match[2].includes(`${key}:`),
+        ),
+      );
+      if (padMatches.length !== 1 || inputMatches.length !== 1) return null;
+      const pad = padMatches[0][1];
+      const turn = inputMatches[0][1];
+      const rest = inputMatches[0][2];
+      return {
+        marker: inputMatches[0][0],
+        replacement: `turn:${turn},headingX:(globalThis.__copySimHeadingPatch.selectedGamepad=!!${pad},${pad}?(globalThis.__copySimHeadingPatch.inputFrames++,globalThis.__copySimHeadingPatch.axisX=${pad}.axes[2]??0,globalThis.__copySimHeadingPatch.axisY=${pad}.axes[3]??0,globalThis.__copySimHeadingPatch.axisX):void 0),headingY:${pad}?globalThis.__copySimHeadingPatch.axisY:void 0,${rest}`,
+      };
+    }
+
     function patchFactory(factory) {
       let source = Function.prototype.toString.call(factory);
       let patched = source;
@@ -121,9 +146,9 @@ function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=
       let patchedWasm = false;
 
       try {
-        const inputVariant = inputVariants.find(({ marker }) =>
-          patched.includes(marker),
-        );
+        const inputVariant =
+          inputVariants.find(({ marker }) => patched.includes(marker)) ??
+          structuralInputVariant(patched);
         if (inputVariant) {
           patched = replaceOnce(
             patched,

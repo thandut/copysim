@@ -55,6 +55,10 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     })`,
     context,
   );
+  const renamedInputFactory = vm.runInContext(
+    '(e=>{function read(){return {input:{x:t,y:n,turn:o,intake:f,score:A,outtake:M,climb:I,block:L,stow:U,hood:P,fieldRelative:E},ui:{cameraFlip:N,gamepadConnected:!!X}}}})',
+    context,
+  );
   // The live deployment puts this bridge in a different Turbopack module from
   // the JavaScript robot controllers above.
   const wasmFactory = vm.runInContext(
@@ -72,6 +76,7 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     halloweenEngineFactory,
     bindingsInputFactory,
     bindingsEngineFactory,
+    renamedInputFactory,
     wasmFactory,
   ]);
 
@@ -125,16 +130,26 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
   );
   assert.match(
     Function.prototype.toString.call(processedChunk[6]),
+    /selectedGamepad=!!X/,
+    "a variable-only input minifier update must be detected structurally",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[6]),
+    /X\.axes\[2\]/,
+    "the structurally detected controller must use the physical right stick",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[7]),
     /i\[h\+2\]=__copySimWasmTurn\(this,s,this\.ids\[e\],s\?\.turn\?\?0\)/,
     "the active WebAssembly engine input must receive heading-controlled turn",
   );
   assert.match(
-    Function.prototype.toString.call(processedChunk[6]),
+    Function.prototype.toString.call(processedChunk[7]),
     /Math\.atan2\(2\*\(n\[3\]\*n\[1\]-n\[0\]\*n\[2\]\)/,
     "the WebAssembly path must derive heading from the robot quaternion",
   );
 
-  processedChunk[6]({});
+  processedChunk[7]({});
   context.__copySimHeadingAxes = { active: true, x: -1, y: 0 };
   const localSim = {
     view: {
@@ -213,7 +228,7 @@ test("the extension manifest is restricted to the real REBUILT origin", async ()
   assert.equal(manifest.content_scripts[0].world, "MAIN");
   assert.equal(manifest.content_scripts[0].run_at, "document_start");
   assert.equal(manifest.permissions, undefined);
-  assert.equal(manifest.version, "1.0.15");
+  assert.equal(manifest.version, "1.0.16");
 });
 
 test("the rebuilt simulation Worker is wrapped before it loads", async () => {

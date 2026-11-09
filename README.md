@@ -1,65 +1,90 @@
-# FRS right-stick heading control
+# FRS Right-Stick Heading Control
 
-This is a local unpacked Chrome/Edge extension for the real FRS REBUILT site.
-It does not proxy the website, bypass security checks, or redirect multiplayer
-traffic. Chrome loads `rebuilt.frsim.com` normally and the extension changes
-only the controller-input and robot-heading functions in your browser.
+A Chrome/Edge extension that adds absolute right-stick heading control to
+[FRS REBUILT](https://rebuilt.frsim.com/). It is intended for FRC drivers who
+want the simulator's steering to behave more like an absolute heading-controlled swerve
+drive.
 
-## Install
+The extension runs locally in the browser. It does not proxy the website,
+bypass security checks, or redirect multiplayer traffic. REBUILT loads from its
+normal website, and the extension modifies only controller input and robot
+heading behavior in the current browser.
 
-1. Open `chrome://extensions` in Chrome, or `edge://extensions` in Edge.
-2. Turn on **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the folder location of this directory.
+## Requirements
 
-5. Open <https://rebuilt.frsim.com/> normally. Complete any genuine Vercel
-   browser check if it appears.
-6. Connect the Xbox controller and choose it in the FRS controller settings.
+- Google Chrome or Microsoft Edge
+- An Xbox-compatible controller
+- A local copy of this repository
 
-After changing extension files, use the reload button on its card in
-`chrome://extensions`, then reload FRS. Do not run `npm start`; the old proxy is
-no longer used.
+## Installation
+
+1. Download or clone this repository.
+2. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
+3. Enable **Developer mode**.
+4. Select **Load unpacked**.
+5. Choose the repository's `extension` folder.
+6. Open [FRS REBUILT](https://rebuilt.frsim.com/), connect the controller, and
+   select it in the simulator's controller settings.
+
+After updating the repository or changing extension files, reload the extension
+from the browser's extensions page. Close any existing REBUILT tabs before
+opening the simulator again so its simulation worker starts with the new code.
 
 ## Controls
 
-- Left stick: normal field-relative translation.
-- Right-stick direction: absolute field-relative robot heading.
-- The robot's intake side is treated as its front.
-- Circular right-stick movement: continuous rotation through the
-  `-180°`/`180°` boundary.
-- Right stick released: rotation output returns to zero.
+- **Left stick:** normal field-relative translation
+- **Right-stick direction:** absolute field-relative robot heading
+- **Right stick released:** zero manual rotation output
+- **Right stick moved in a circle:** continuous rotation across the
+  `-180°`/`180°` boundary
 
-The implementation mirrors the referenced `DriveFactory` values:
+The intake side is treated as the robot's front.
 
-- radial right-stick deadband: `0.9`
-- proportional gain: `3.5`
-- derivative gain: `0.09`
-- maximum heading lead: `170°`
+## Heading Controller
 
-The generic controller path covers robots such as 4414 and 254. The separate
-Reblitz path covers 2910. While 2910 is scoring, its built-in hub aim takes
-priority over custom right-stick heading; turret robots such as 4414 retain
-right-stick heading while firing. Version 1.0.15 applies heading control
-at the WebAssembly input boundary used by the Halloween build, while retaining
-the JavaScript-controller fallback. It patches both the page input code and the
-simulation Web Worker where robot physics actually runs. A red banner appears
-10 seconds after the simulation Worker starts if an FRS update prevents either
-side from loading.
+The controller uses these tuning values:
 
-For a detailed status check, open the browser developer console and enter:
+- Radial right-stick deadband: `0.9`
+- Proportional gain: `3.5`
+- Derivative gain: `0.09`
+- Maximum heading lead: `170°`
+
+Turret robots such as 4414 retain right-stick chassis heading while firing.
+
+## Compatibility
+
+Version 1.0.16 applies heading control at REBUILT's WebAssembly input boundary
+and retains a JavaScript-controller fallback. The input patch also recognizes
+safe variable-only minifier changes.
+
+REBUILT is actively updated, so a future deployment may change the internal
+code that this extension patches. If compatibility checks fail, a red banner
+appears after the simulation worker starts instead of silently applying a
+partial patch.
+
+## Troubleshooting
+
+First reload the unpacked extension, close all REBUILT tabs, and reopen the
+site. To inspect the patch status, open the browser developer console and run:
 
 ```js
 __copySimHeadingPatch
 ```
 
-After starting a match, `input`, `worker`, and `workerEngine` should all be
-`true`. The remaining fields show the selected controller's right-stick axes
-and whether those values reached the robot controller in the simulation Worker.
+After starting a match, `input`, `worker`, and `workerEngine` should be `true`.
+The other fields show the selected controller's right-stick axes, whether input
+reached the worker, and whether heading control is engaged.
 
-## Verify
+When reporting a compatibility issue, include this status object and describe
+the selected robot and controller action that caused the problem.
 
-Run:
+## Development
+
+Run the automated tests from the repository root:
 
 ```powershell
 npm test
 ```
+
+The extension has no build step. Do not run `npm start`; load the `extension`
+folder directly as an unpacked browser extension.
