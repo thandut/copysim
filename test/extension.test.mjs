@@ -8,6 +8,8 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
   const context = vm.createContext({
     console,
     document: {},
+    performance,
+    postMessage: () => {},
     setTimeout: () => 0,
   });
 
@@ -65,6 +67,8 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     `(t=>{"use strict";
       class W{step(t){let e=this.e.exports,i=new Float64Array(e.memory.buffer,e.fs_input(this.p),10*this.ids.length);for(let e=0;e<this.ids.length;e++){let s=t.get(this.ids[e]),h=10*e;i[h]=s?.x??0,i[h+1]=s?.y??0,i[h+2]=s?.turn??0,i[h+3]=+!!s?.intake}}}
       globalThis.__copySimTestWasmTurn=__copySimWasmTurn;
+      function rollback(){let e=globalThis.__copySimTestSession,sF=false,sk=globalThis.__copySimTestInput,s={NEUTRAL_INPUT:{x:0,y:0,turn:0}};return({controls:()=>{var t;let e,i;return t=sF?s.NEUTRAL_INPUT:sk,e=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),i=0,t.score&&(i|=1),t.intake&&(i|=2),t.outtake&&(i|=4),t.climb&&(i|=8),t.block&&(i|=16),t.stow&&(i|=32),!1===t.fieldRelative&&(i|=64),t.hood&&(i|=128),(e(t.x)|e(t.y)<<8|e(t.turn)<<16|i<<24)>>>0}}).controls()}
+      globalThis.__copySimTestRollback=rollback;
     })`,
     context,
   );
@@ -83,6 +87,7 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
   assert.equal(context.__copySimHeadingPatch.input, true);
   assert.equal(context.__copySimHeadingPatch.engine, true);
   assert.equal(context.__copySimHeadingPatch.wasm, true);
+  assert.equal(context.__copySimHeadingPatch.rollback, true);
   assert.equal(context.__copySimHeadingPatch.worker, false);
   assert.equal(context.__copySimHeadingPatch.workerEngine, false);
   assert.match(
@@ -147,6 +152,11 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     Function.prototype.toString.call(processedChunk[7]),
     /Math\.atan2\(2\*\(n\[3\]\*n\[1\]-n\[0\]\*n\[2\]\)/,
     "the WebAssembly path must derive heading from the robot quaternion",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[7]),
+    /controls:\(\)=>\{let t=__copySimRollbackInput/,
+    "multiplayer rollback controls must apply heading before packing network input",
   );
 
   processedChunk[7]({});
@@ -218,6 +228,54 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     0.42,
     "2910 native hub aiming must retain turn control while scoring",
   );
+
+  context.__copySimTestSession = {
+    robot: 7,
+    sim: {
+      views: () => ({
+        elapsed: 0,
+        robots: [
+          {
+            id: 7,
+            team: 4414,
+            alliance: "blue",
+            quat: [0, 0, 0, 1],
+          },
+        ],
+      }),
+    },
+  };
+  context.__copySimWorkerDebug = { rollbackFrames: 0 };
+  context.__copySimTestInput = { x: 0, y: 0, turn: 1 };
+  const packed = context.__copySimTestRollback();
+  const packedTurnByte = (packed >>> 16) & 0xff;
+  const packedTurn = (packedTurnByte > 127 ? packedTurnByte - 256 : packedTurnByte) / 127;
+  assert.ok(
+    packedTurn < -0.9,
+    "multiplayer must transmit absolute-heading correction instead of raw velocity turn",
+  );
+  assert.equal(context.__copySimWorkerDebug.rollbackFrames, 1);
+
+  context.__copySimTestSession.sim.views = () => ({
+    elapsed: 0,
+    robots: [
+      {
+        id: 7,
+        team: 2910,
+        alliance: "blue",
+        quat: [0, 0, 0, 1],
+      },
+    ],
+  });
+  context.__copySimTestInput = { x: 0, y: 0, turn: 0.42, score: true };
+  const scoringPacked = context.__copySimTestRollback();
+  const scoringTurnByte = (scoringPacked >>> 16) & 0xff;
+  const scoringTurn =
+    (scoringTurnByte > 127 ? scoringTurnByte - 256 : scoringTurnByte) / 127;
+  assert.ok(
+    Math.abs(scoringTurn - 0.42) < 0.01,
+    "2910 multiplayer scoring must retain its native hub-aim turn input",
+  );
 });
 
 test("the extension manifest is restricted to the real REBUILT origin", async () => {
@@ -228,7 +286,7 @@ test("the extension manifest is restricted to the real REBUILT origin", async ()
   assert.equal(manifest.content_scripts[0].world, "MAIN");
   assert.equal(manifest.content_scripts[0].run_at, "document_start");
   assert.equal(manifest.permissions, undefined);
-  assert.equal(manifest.version, "1.0.16");
+  assert.equal(manifest.version, "1.0.17");
 });
 
 test("the rebuilt simulation Worker is wrapped before it loads", async () => {

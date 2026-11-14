@@ -17,6 +17,8 @@
     workerMagnitude: null,
     workerEngaged: false,
     handoffFrames: 0,
+    rollback: false,
+    rollbackFrames: 0,
   };
   globalThis.__copySimHeadingPatch = status;
 
@@ -47,11 +49,12 @@
     const engineStart = 't=>{"use strict";';
     const headingHelpers = String.raw`
 function __copySimWrap(t){let e=2*Math.PI;return t-=Math.trunc((t+Math.PI)/e)*e,t-=Math.trunc((t-Math.PI)/e)*e,t}
-function __copySimReport(i,r,s,a){let n=globalThis.__copySimWorkerDebug;if(!n)return;n.frames++,n.headingX=s,n.headingY=a,n.yaw=i,n.magnitude=r,n.engaged=r>.9;let o=performance.now();o-n.last>250&&(n.last=o,postMessage({t:"__copySimHeadingDebug",debug:{frames:n.frames,headingX:n.headingX,headingY:n.headingY,yaw:n.yaw,magnitude:n.magnitude,engaged:n.engaged}}))}
+function __copySimReport(i,r,s,a){let n=globalThis.__copySimWorkerDebug;if(!n)return;n.frames++,n.headingX=s,n.headingY=a,n.yaw=i,n.magnitude=r,n.engaged=r>.9;let o=performance.now();o-n.last>250&&(n.last=o,postMessage({t:"__copySimHeadingDebug",debug:{frames:n.frames,headingX:n.headingX,headingY:n.headingY,yaw:n.yaw,magnitude:n.magnitude,engaged:n.engaged,rollbackFrames:n.rollbackFrames??0}}))}
 function __copySimHeadingTarget(t,e,i){let h=globalThis.__copySimHeadingAxes,s=h?.active?h.x:e.headingX??0,a=h?.active?h.y:e.headingY??0,r=Math.hypot(s,a);if(__copySimReport(i,r,s,a),!(r>.9))return t.__copySimHeadingEngaged=!1,t.__copySimHeadingError=0,t.__copySimLastStick=void 0,t.__copySimLastYaw=void 0,null;let n=__copySimWrap(Math.atan2(-s,-a)+Math.PI+("red"===t.alliance?Math.PI:0));return t.__copySimHeadingEngaged?t.__copySimHeadingError+=__copySimWrap(n-t.__copySimLastStick)-__copySimWrap(i-t.__copySimLastYaw):(t.__copySimHeadingEngaged=!0,t.__copySimHeadingError=__copySimWrap(n-i)),Math.abs(t.__copySimHeadingError)>2*Math.PI&&(t.__copySimHeadingError-=2*Math.PI*Math.sign(t.__copySimHeadingError)),t.__copySimLastStick=n,t.__copySimLastYaw=i,__copySimWrap(i+Math.max(-170*Math.PI/180,Math.min(170*Math.PI/180,t.__copySimHeadingError)))}
 function __copySimHeadingOmega(t,e,i,s,a){let r=__copySimHeadingTarget(t,e,i);if(null===r)return t.__copySimHeadingPreviousError=void 0,t.__copySimHeadingLastTime=s,0;let n=__copySimWrap(r-i),o=Number.isFinite(t.__copySimHeadingLastTime)?s-t.__copySimHeadingLastTime:0,h=o>0&&o<.25&&Number.isFinite(t.__copySimHeadingPreviousError)?__copySimWrap(n-t.__copySimHeadingPreviousError)/o:0,l=3.5*n+.09*h;return t.__copySimHeadingPreviousError=n,t.__copySimHeadingLastTime=s,Math.max(-a,Math.min(a,l))}
 function __copySimHeadingOrTurn(t,e,i,s,a,r){let n=globalThis.__copySimHeadingAxes;return n?.active||null!=e.headingX&&null!=e.headingY?__copySimHeadingOmega(t,e,i,s,a):(__copySimReport(i,0,null,null),r)}
 function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=>t.id===i);if(!a?.local)return s;let r=globalThis.__copySimHeadingAxes;if(!r?.active&&(null==e.headingX||null==e.headingY))return s;let n=a.quat;if(!n||n.length<4)return s;let o=Math.atan2(2*(n[3]*n[1]-n[0]*n[2]),1-2*(n[1]*n[1]+n[2]*n[2]));if(e.score&&2910===a.team)return t.__copySimHeadingEngaged=!1,t.__copySimHeadingPreviousError=void 0,t.__copySimHeadingLastTime=void 0,__copySimReport(o,0,null,null),s;let h=__copySimHeadingOmega(t,e,o,t.view?.elapsed??0,5.04),l=Math.max(-1,Math.min(1,h/5.04));return 0===l?0:Math.sign(l)*(.12+.88*Math.abs(l))}
+function __copySimRollbackInput(t,e){if(!e)return e;let i=t?.sim?.views?.(),s=i?.robots?.find(e=>e.id===t.robot);if(!s)return e;let a=globalThis.__copySimHeadingAxes;if(!a?.active&&(null==e.headingX||null==e.headingY))return e;let r=s.quat;if(!r||r.length<4)return e;t.alliance=s.alliance;let n=Math.atan2(2*(r[3]*r[1]-r[0]*r[2]),1-2*(r[1]*r[1]+r[2]*r[2]));if(e.score&&2910===s.team)return t.__copySimHeadingEngaged=!1,t.__copySimHeadingPreviousError=void 0,t.__copySimHeadingLastTime=void 0,__copySimReport(n,0,null,null),e;let o=__copySimHeadingOmega(t,e,n,i?.elapsed??performance.now()/1e3,5.04),h=Math.max(-1,Math.min(1,o/5.04)),l=0===h?0:Math.sign(h)*(.12+.88*Math.abs(h)),d=globalThis.__copySimWorkerDebug;return d&&(d.rollbackFrames=(d.rollbackFrames??0)+1),{...e,turn:l}}
 `;
 
     const genericVariants = [
@@ -100,6 +103,11 @@ function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=
     const wasmReplacement =
       "i[h]=s?.x??0,i[h+1]=s?.y??0,i[h+2]=__copySimWasmTurn(this,s,this.ids[e],s?.turn??0),i[h+3]=+!!s?.intake";
 
+    const rollbackMarker =
+      "controls:()=>{var t;let e,i;return t=sF?s.NEUTRAL_INPUT:sk,e=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),i=0,t.score&&(i|=1),t.intake&&(i|=2),t.outtake&&(i|=4),t.climb&&(i|=8),t.block&&(i|=16),t.stow&&(i|=32),!1===t.fieldRelative&&(i|=64),t.hood&&(i|=128),(e(t.x)|e(t.y)<<8|e(t.turn)<<16|i<<24)>>>0}";
+    const rollbackReplacement =
+      "controls:()=>{let t=__copySimRollbackInput(e,sF?s.NEUTRAL_INPUT:sk),i=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),r=0;return t.score&&(r|=1),t.intake&&(r|=2),t.outtake&&(r|=4),t.climb&&(r|=8),t.block&&(r|=16),t.stow&&(r|=32),!1===t.fieldRelative&&(r|=64),t.hood&&(r|=128),(i(t.x)|i(t.y)<<8|i(t.turn)<<16|r<<24)>>>0}";
+
     function replaceOnce(source, marker, replacement, label) {
       const first = source.indexOf(marker);
       if (first < 0) throw new Error(`CopySim marker not found: ${label}`);
@@ -144,6 +152,7 @@ function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=
       let patchedInput = false;
       let patchedEngine = false;
       let patchedWasm = false;
+      let patchedRollback = false;
 
       try {
         const inputVariant =
@@ -210,12 +219,22 @@ function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=
           );
           patchedWasm = true;
         }
+        if (patched.includes(rollbackMarker)) {
+          patched = replaceOnce(
+            patched,
+            rollbackMarker,
+            rollbackReplacement,
+            "multiplayer rollback controls",
+          );
+          patchedRollback = true;
+        }
 
         if (patched === source) return factory;
         const replacement = (0, eval)(`(${patched})`);
         if (patchedInput) patchStatus.input = true;
         if (patchedEngine) patchStatus.engine = true;
         if (patchedWasm) patchStatus.wasm = true;
+        if (patchedRollback) patchStatus.rollback = true;
         return replacement;
       } catch (error) {
         console.error(
@@ -307,10 +326,15 @@ function __copySimWasmTurn(t,e,i,s){if(!e)return s;let a=t.view?.robots?.find(t=
         }
 
         const originalURL = new URL(scriptURL, location.href);
-        const workerStatus = { input: false, engine: false, wasm: false };
+        const workerStatus = {
+          input: false,
+          engine: false,
+          wasm: false,
+          rollback: false,
+        };
         const wrapperSource = `
-const __copySimWorkerStatus={input:false,engine:false,wasm:false};
-globalThis.__copySimWorkerDebug={frames:0,last:0};
+const __copySimWorkerStatus={input:false,engine:false,wasm:false,rollback:false};
+globalThis.__copySimWorkerDebug={frames:0,last:0,rollbackFrames:0};
 globalThis.__copySimHeadingAxes={active:false,x:0,y:0};
 globalThis.addEventListener("message",event=>{if(event.data?.t!=="__copySimHeadingAxes")return;event.stopImmediatePropagation();let x=Number(event.data.x),y=Number(event.data.y),active=event.data.active!==false&&Number.isFinite(x)&&Number.isFinite(y);globalThis.__copySimHeadingAxes={active,x:Number.isFinite(x)?x:0,y:Number.isFinite(y)?y:0}},true);
 const __copySimWorkerOrigin=${JSON.stringify(originalURL.origin)};
@@ -320,7 +344,7 @@ const __copySimNativeFetch=globalThis.fetch.bind(globalThis);
 globalThis.fetch=(input,init)=>{if(typeof Request==="function"&&input instanceof Request)return __copySimNativeFetch(input,init);let resolved=input;try{resolved=new URL(String(input),__copySimWorkerOrigin+"/").href}catch{}return __copySimNativeFetch(resolved,init)};
 (${installTurbopackPatch.toString()})(globalThis,__copySimWorkerStatus);
 importScripts(${JSON.stringify(originalURL.href)});
-setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStatus.engine,wasm:__copySimWorkerStatus.wasm}),0);
+setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStatus.engine,wasm:__copySimWorkerStatus.wasm,rollback:__copySimWorkerStatus.rollback}),0);
 `;
         const blobURL = URL.createObjectURL(
           new Blob([wrapperSource], { type: "text/javascript" }),
@@ -365,8 +389,10 @@ setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStat
             event.stopImmediatePropagation();
             workerStatus.engine = !!event.data.engine;
             workerStatus.wasm = !!event.data.wasm;
+            workerStatus.rollback = !!event.data.rollback;
             status.workerEngine = workerStatus.wasm;
-            if (status.input && status.workerEngine) {
+            status.rollback = workerStatus.rollback;
+            if (status.input && status.workerEngine && status.rollback) {
               console.info(
                 "CopySim right-stick heading control is active in the simulation worker.",
               );
@@ -381,13 +407,14 @@ setTimeout(()=>postMessage({t:"__copySimHeadingPatch",engine:__copySimWorkerStat
           status.workerHeadingY = debug.headingY;
           status.workerMagnitude = debug.magnitude;
           status.workerEngaged = debug.engaged;
+          status.rollbackFrames = debug.rollbackFrames ?? 0;
         });
 
         setTimeout(() => URL.revokeObjectURL(blobURL), 60_000);
         setTimeout(() => {
-          if (status.input && status.workerEngine) return;
+          if (status.input && status.workerEngine && status.rollback) return;
           showFailure(
-            `CopySim heading control did not load (input: ${status.input ? "yes" : "no"}, worker: ${status.worker ? "yes" : "no"}, worker engine: ${status.workerEngine ? "yes" : "no"}). Reload once, then update the extension if this remains.`,
+            `CopySim heading control did not load (input: ${status.input ? "yes" : "no"}, worker: ${status.worker ? "yes" : "no"}, worker engine: ${status.workerEngine ? "yes" : "no"}, multiplayer: ${status.rollback ? "yes" : "no"}). Reload once, then update the extension if this remains.`,
           );
         }, 10_000);
 
