@@ -67,8 +67,15 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     `(t=>{"use strict";
       class W{step(t){let e=this.e.exports,i=new Float64Array(e.memory.buffer,e.fs_input(this.p),10*this.ids.length);for(let e=0;e<this.ids.length;e++){let s=t.get(this.ids[e]),h=10*e;i[h]=s?.x??0,i[h+1]=s?.y??0,i[h+2]=s?.turn??0,i[h+3]=+!!s?.intake}}}
       globalThis.__copySimTestWasmTurn=__copySimWasmTurn;
-      function rollback(){let e=globalThis.__copySimTestSession,sF=false,sk=globalThis.__copySimTestInput,s={NEUTRAL_INPUT:{x:0,y:0,turn:0}};return({controls:()=>{var t;let e,i;return t=sF?s.NEUTRAL_INPUT:sk,e=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),i=0,t.score&&(i|=1),t.intake&&(i|=2),t.outtake&&(i|=4),t.climb&&(i|=8),t.block&&(i|=16),t.stow&&(i|=32),!1===t.fieldRelative&&(i|=64),t.hood&&(i|=128),(e(t.x)|e(t.y)<<8|e(t.turn)<<16|i<<24)>>>0}}).controls()}
+      function rollback(){let h={match:1};let e={match:h.match,sim:null,predictor:null,robot:-1};e=globalThis.__copySimTestSession;let sF=false,sk=globalThis.__copySimTestInput,s={NEUTRAL_INPUT:{x:0,y:0,turn:0}};return({controls:()=>{var t;let e,i;return t=sF?s.NEUTRAL_INPUT:sk,e=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),i=0,t.score&&(i|=1),t.intake&&(i|=2),t.outtake&&(i|=4),t.climb&&(i|=8),t.block&&(i|=16),t.stow&&(i|=32),!1===t.fieldRelative&&(i|=64),t.hood&&(i|=128),(e(t.x)|e(t.y)<<8|e(t.turn)<<16|i<<24)>>>0}}).controls()}
       globalThis.__copySimTestRollback=rollback;
+    })`,
+    context,
+  );
+  const beta33RollbackFactory = vm.runInContext(
+    `(t=>{"use strict";
+      function rollback(){let h={match:1};let e={match:h.match,sim:null,predictor:null,robot:-1};e=globalThis.__copySimTestSession;let tu=false,i={D:{x:0,y:0,turn:0}},ta=globalThis.__copySimTestInput;return({controls:()=>{var t;let e,s;return t=tu?i.D:ta,e=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),s=0,t.score&&(s|=1),t.intake&&(s|=2),t.outtake&&(s|=4),t.climb&&(s|=8),t.block&&(s|=16),t.stow&&(s|=32),!1===t.fieldRelative&&(s|=64),t.hood&&(s|=128),(e(t.x)|e(t.y)<<8|e(t.turn)<<16|s<<24)>>>0}}).controls()}
+      globalThis.__copySimTestBeta33Rollback=rollback;
     })`,
     context,
   );
@@ -82,6 +89,7 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
     bindingsEngineFactory,
     renamedInputFactory,
     wasmFactory,
+    beta33RollbackFactory,
   ]);
 
   assert.equal(context.__copySimHeadingPatch.input, true);
@@ -155,11 +163,22 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
   );
   assert.match(
     Function.prototype.toString.call(processedChunk[7]),
-    /controls:\(\)=>\{let t=__copySimRollbackInput/,
+    /controls:\(\)=>\{let __copySimInput=__copySimRollbackInput/,
     "multiplayer rollback controls must apply heading before packing network input",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[8]),
+    /function __copySimRollbackInput/,
+    "the heading helpers must be installed when rollback moves to its own module",
+  );
+  assert.match(
+    Function.prototype.toString.call(processedChunk[8]),
+    /controls:\(\)=>\{let __copySimInput=__copySimRollbackInput\(e,tu\?i\.D:ta\)/,
+    "Beta v33 multiplayer controls must be detected despite renamed variables",
   );
 
   processedChunk[7]({});
+  processedChunk[8]({});
   context.__copySimHeadingAxes = { active: true, x: -1, y: 0 };
   const localSim = {
     view: {
@@ -248,13 +267,21 @@ test("the extension survives Turbopack's queue-to-runtime handoff", async () => 
   context.__copySimWorkerDebug = { rollbackFrames: 0 };
   context.__copySimTestInput = { x: 0, y: 0, turn: 1 };
   const packed = context.__copySimTestRollback();
+  const beta33Packed = context.__copySimTestBeta33Rollback();
   const packedTurnByte = (packed >>> 16) & 0xff;
   const packedTurn = (packedTurnByte > 127 ? packedTurnByte - 256 : packedTurnByte) / 127;
   assert.ok(
     packedTurn < -0.9,
     "multiplayer must transmit absolute-heading correction instead of raw velocity turn",
   );
-  assert.equal(context.__copySimWorkerDebug.rollbackFrames, 1);
+  const beta33TurnByte = (beta33Packed >>> 16) & 0xff;
+  const beta33Turn =
+    (beta33TurnByte > 127 ? beta33TurnByte - 256 : beta33TurnByte) / 127;
+  assert.ok(
+    beta33Turn < -0.9,
+    "Beta v33 multiplayer must transmit absolute-heading correction",
+  );
+  assert.equal(context.__copySimWorkerDebug.rollbackFrames, 2);
 
   context.__copySimTestSession.sim.views = () => ({
     elapsed: 0,
@@ -286,7 +313,16 @@ test("the extension manifest is restricted to the real REBUILT origin", async ()
   assert.equal(manifest.content_scripts[0].world, "MAIN");
   assert.equal(manifest.content_scripts[0].run_at, "document_start");
   assert.equal(manifest.permissions, undefined);
-  assert.equal(manifest.version, "1.0.17");
+  assert.equal(manifest.version, "1.0.18");
+});
+
+test("the compatibility notification can be dismissed", async () => {
+  const extensionSource = await readFile("extension/inject.js", "utf8");
+  assert.match(extensionSource, /dismiss\.textContent = "Dismiss"/);
+  assert.match(
+    extensionSource,
+    /dismiss\.addEventListener\("click", \(\) => banner\.remove\(\)\)/,
+  );
 });
 
 test("the rebuilt simulation Worker is wrapped before it loads", async () => {

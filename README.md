@@ -53,14 +53,17 @@ Turret robots such as 4414 retain right-stick chassis heading while firing.
 
 ## Compatibility
 
-Version 1.0.17 applies heading control at REBUILT's WebAssembly input boundary,
+Version 1.0.18 applies heading control at REBUILT's WebAssembly input boundary,
 its multiplayer rollback-network input boundary, and a JavaScript-controller
-fallback. The input patch also recognizes safe variable-only minifier changes.
+fallback. The input and multiplayer patches also recognize safe variable-only
+minifier changes.
 
 REBUILT is actively updated, so a future deployment may change the internal
 code that this extension patches. If compatibility checks fail, a red banner
 appears after the simulation worker starts instead of silently applying a
 partial patch.
+The notification can be hidden with its **Dismiss** button after noting which
+compatibility check failed.
 
 ## Troubleshooting
 

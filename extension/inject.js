@@ -103,10 +103,56 @@ function __copySimRollbackInput(t,e){if(!e)return e;let i=t?.sim?.views?.(),s=i?
     const wasmReplacement =
       "i[h]=s?.x??0,i[h+1]=s?.y??0,i[h+2]=__copySimWasmTurn(this,s,this.ids[e],s?.turn??0),i[h+3]=+!!s?.intake";
 
-    const rollbackMarker =
-      "controls:()=>{var t;let e,i;return t=sF?s.NEUTRAL_INPUT:sk,e=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),i=0,t.score&&(i|=1),t.intake&&(i|=2),t.outtake&&(i|=4),t.climb&&(i|=8),t.block&&(i|=16),t.stow&&(i|=32),!1===t.fieldRelative&&(i|=64),t.hood&&(i|=128),(e(t.x)|e(t.y)<<8|e(t.turn)<<16|i<<24)>>>0}";
-    const rollbackReplacement =
-      "controls:()=>{let t=__copySimRollbackInput(e,sF?s.NEUTRAL_INPUT:sk),i=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),r=0;return t.score&&(r|=1),t.intake&&(r|=2),t.outtake&&(r|=4),t.climb&&(r|=8),t.block&&(r|=16),t.stow&&(r|=32),!1===t.fieldRelative&&(r|=64),t.hood&&(r|=128),(i(t.x)|i(t.y)<<8|i(t.turn)<<16|r<<24)>>>0}";
+    function structuralRollbackVariant(source) {
+      const candidates = [
+        ...source.matchAll(
+          /controls:\(\)=>\{var [A-Za-z_$][\w$]*;let [A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*;return [^{}]*?>>>0\}/g,
+        ),
+      ];
+      const matches = [];
+      for (const candidateMatch of candidates) {
+        const marker = candidateMatch[0];
+        const head = marker.match(
+          /^controls:\(\)=>\{var ([A-Za-z_$][\w$]*);let ([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*);return \1=([A-Za-z_$][\w$]*)\?([A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*):([A-Za-z_$][\w$]*),\2=\1=>255&Math\.max\(-127,Math\.min\(127,Math\.round\(\(Number\.isFinite\(\1\)\?\1:0\)\*127\)\)\),\3=0,/,
+        );
+        if (!head) continue;
+        const [, input, quantize, flags, held, neutral, liveInput] = head;
+        const flagKeys = [
+          ["score", 1],
+          ["intake", 2],
+          ["outtake", 4],
+          ["climb", 8],
+          ["block", 16],
+          ["stow", 32],
+          ["hood", 128],
+        ];
+        if (
+          !flagKeys.every(([key, bit]) =>
+            marker.includes(`${input}.${key}&&(${flags}|=${bit})`),
+          ) ||
+          !marker.includes(`!1===${input}.fieldRelative&&(${flags}|=64)`) ||
+          !marker.endsWith(
+            `(${quantize}(${input}.x)|${quantize}(${input}.y)<<8|${quantize}(${input}.turn)<<16|${flags}<<24)>>>0}`,
+          )
+        ) {
+          continue;
+        }
+
+        const before = source.slice(0, candidateMatch.index);
+        const sessions = [
+          ...before.matchAll(
+            /let ([A-Za-z_$][\w$]*)=\{match:[A-Za-z_$][\w$]*\.match,sim:null,predictor:null,robot:-1\}/g,
+          ),
+        ];
+        const session = sessions.at(-1)?.[1];
+        if (!session) continue;
+        matches.push({
+          marker,
+          replacement: `controls:()=>{let __copySimInput=__copySimRollbackInput(${session},${held}?${neutral}:${liveInput}),__copySimQuantize=t=>255&Math.max(-127,Math.min(127,Math.round((Number.isFinite(t)?t:0)*127))),__copySimFlags=0;return __copySimInput.score&&(__copySimFlags|=1),__copySimInput.intake&&(__copySimFlags|=2),__copySimInput.outtake&&(__copySimFlags|=4),__copySimInput.climb&&(__copySimFlags|=8),__copySimInput.block&&(__copySimFlags|=16),__copySimInput.stow&&(__copySimFlags|=32),!1===__copySimInput.fieldRelative&&(__copySimFlags|=64),__copySimInput.hood&&(__copySimFlags|=128),(__copySimQuantize(__copySimInput.x)|__copySimQuantize(__copySimInput.y)<<8|__copySimQuantize(__copySimInput.turn)<<16|__copySimFlags<<24)>>>0}`,
+        });
+      }
+      return matches.length === 1 ? matches[0] : null;
+    }
 
     function replaceOnce(source, marker, replacement, label) {
       const first = source.indexOf(marker);
@@ -174,6 +220,7 @@ function __copySimRollbackInput(t,e){if(!e)return e;let i=t?.sim?.views?.(),s=i?
         const reblitzVariant = reblitzVariants.find(({ marker }) =>
           patched.includes(marker),
         );
+        const rollbackVariant = structuralRollbackVariant(patched);
         const hasController =
           patched.startsWith(engineStart) &&
           genericVariant &&
@@ -181,7 +228,8 @@ function __copySimRollbackInput(t,e){if(!e)return e;let i=t?.sim?.views?.(),s=i?
           patched.includes(acceptMarker);
         const hasWasm =
           patched.startsWith(engineStart) && patched.includes(wasmMarker);
-        if (hasController || hasWasm) {
+        const hasRollback = patched.startsWith(engineStart) && rollbackVariant;
+        if (hasController || hasWasm || hasRollback) {
           patched = replaceOnce(
             patched,
             engineStart,
@@ -219,11 +267,11 @@ function __copySimRollbackInput(t,e){if(!e)return e;let i=t?.sim?.views?.(),s=i?
           );
           patchedWasm = true;
         }
-        if (patched.includes(rollbackMarker)) {
+        if (hasRollback) {
           patched = replaceOnce(
             patched,
-            rollbackMarker,
-            rollbackReplacement,
+            rollbackVariant.marker,
+            rollbackVariant.replacement,
             "multiplayer rollback controls",
           );
           patchedRollback = true;
@@ -299,7 +347,14 @@ function __copySimRollbackInput(t,e){if(!e)return e;let i=t?.sim?.views?.(),s=i?
     if (document.getElementById("copysim-heading-error")) return;
     const banner = document.createElement("div");
     banner.id = "copysim-heading-error";
-    banner.textContent = message;
+    const text = document.createElement("span");
+    text.textContent = message;
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.textContent = "Dismiss";
+    dismiss.setAttribute("aria-label", "Dismiss CopySim notification");
+    dismiss.addEventListener("click", () => banner.remove());
+    banner.append(text, dismiss);
     Object.assign(banner.style, {
       position: "fixed",
       inset: "0 0 auto 0",
@@ -309,6 +364,19 @@ function __copySimRollbackInput(t,e){if(!e)return e;let i=t?.sim?.views?.(),s=i?
       color: "white",
       font: "600 14px system-ui",
       textAlign: "center",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "12px",
+    });
+    Object.assign(dismiss.style, {
+      border: "1px solid rgba(255,255,255,.75)",
+      borderRadius: "4px",
+      padding: "4px 8px",
+      background: "transparent",
+      color: "white",
+      font: "inherit",
+      cursor: "pointer",
     });
     document.documentElement.appendChild(banner);
   }
